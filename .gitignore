@@ -1,0 +1,14 @@
+/nbproject/private/
+/build/
+/nbbuild/
+/dist/
+/nbdist/
+/Data/
+/Logs/
+nbactions.xml
+nb-configuration.xml
+
+# Package Files #
+*.jar
+*.war
+*.ear
