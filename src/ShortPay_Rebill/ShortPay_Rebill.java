@@ -59,6 +59,7 @@ public class ShortPay_Rebill {
 
 
         try {
+            Config.loadConfigFile("C:\\PW\\pw.txt");
 
             /*
             String jobID = "4";

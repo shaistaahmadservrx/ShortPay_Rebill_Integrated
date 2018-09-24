@@ -229,6 +229,8 @@ public class Database_Queries {
                     + "                        AR_RECEIPT ON AR_RECEIPT_ALLOC.FK_ARRECEIPT_ID = AR_RECEIPT.ARR_ID\n"
                     + "                    WHERE\n"
                     + "                        AR_ACCOUNT.ACCOUNT_NAME NOT LIKE '%PIP%'\n"
+                    + "                            AND AR_ACCOUNT.AR_ID NOT IN (4886, 11278)\n"
+                    + "                            AND CLAIM.VENUE_STATE NOT IN ('ME', 'MO', 'NE', 'NH', 'NJ', 'SD', 'UT', 'VA', 'MD', 'DC', 'IA', 'IL', 'IN', 'WV')\n"
                     + "                            AND claim.L_CLAIMANT_LNAME NOT LIKE '%PIP%'\n"
                     + "                            AND AR_RECEIPT_ALLOC.ALLOC_AMOUNT != 0\n"
                     + "                            AND CLAIM.CLAIM_ID NOT IN (SELECT CLAIM_ACTIVITY.FK_CLAIM_ID\n"
@@ -264,6 +266,8 @@ public class Database_Queries {
                     + "                    WHERE\n"
                     + "                        AP_ACCOUNT.AP_ID = 210\n"
                     + "                            AND AR_ACCOUNT.ACCOUNT_NAME NOT LIKE '%PIP%'\n"
+                    + "                            AND AR_ACCOUNT.AR_ID NOT IN (4886, 11278)\n"
+                    + "                            AND CLAIM.VENUE_STATE NOT IN ('ME', 'MO', 'NE', 'NH', 'NJ', 'SD', 'UT', 'VA', 'MD', 'DC', 'IA', 'IL', 'IN', 'WV')\n"
                     + "                            AND claim.L_CLAIMANT_LNAME NOT LIKE '%PIP%'\n"
                     + "                            AND AR_RECEIPT_ALLOC.ALLOC_AMOUNT != 0\n"
                     + "                            AND CLAIM.CLAIM_ID NOT IN (SELECT CLAIM_ACTIVITY.FK_CLAIM_ID\n"
@@ -282,7 +286,7 @@ public class Database_Queries {
                     + "                            AND ((CLAIM.TOTALBILLED - CLAIM.TOTALRECEIPT) > 11))\n";
             System.out.println(firebirdQuery);
             Statement stmtFirebird = connFirebird.createStatement();
-            
+
             ResultSet rs = stmtFirebird.executeQuery(firebirdQuery);
 
             while (rs.next()) {
@@ -324,7 +328,7 @@ public class Database_Queries {
         ArrayList invoicesToProcess = new ArrayList();
         String[] dates = Utilities.getDatesForLastWeek();
 
-        try {            
+        try {
             String firebirdQuery = "SELECT DISTINCT\n"
                     + "                        (CLAIM_ID)\n"
                     + "                    FROM\n"
@@ -405,7 +409,7 @@ public class Database_Queries {
             return invoicesToProcess;
         }
     }
-    
+
     public static String checkIfJobScheduled(String jobID) {
         Connection connMySql = DatabaseConnections.connectToMySQL();
         String scheduleID = "";
@@ -430,7 +434,7 @@ public class Database_Queries {
             return scheduleID;
         }
     }
-    
+
     public static void setJobAsStarted(String scheduleID) {
         Connection connMySql = DatabaseConnections.connectToMySQL();
 
@@ -446,7 +450,7 @@ public class Database_Queries {
 
         }
     }
-    
+
     public static void setJobAsCompleted(String scheduleID) {
         Connection connMySql = DatabaseConnections.connectToMySQL();
 
