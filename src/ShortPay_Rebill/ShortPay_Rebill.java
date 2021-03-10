@@ -6,24 +6,13 @@
 package ShortPay_Rebill;
 
 //import com.gargoylesoftware.htmlunit.javascript.host.URL;
-import com.gargoylesoftware.htmlunit.CookieManager;
-import com.gargoylesoftware.htmlunit.WebClient;
-import com.gargoylesoftware.htmlunit.html.HtmlForm;
-import com.gargoylesoftware.htmlunit.html.HtmlPage;
-import com.gargoylesoftware.htmlunit.html.HtmlPasswordInput;
-import com.gargoylesoftware.htmlunit.html.HtmlSubmitInput;
-import com.gargoylesoftware.htmlunit.html.HtmlTextInput;
-import java.io.File;
 
-import java.nio.file.Files;
+import com.gargoylesoftware.htmlunit.CookieManager;
+
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import org.apache.commons.logging.LogFactory;
+
 
 /**
  *
@@ -36,8 +25,6 @@ public class ShortPay_Rebill {
      */
     public static void main(String[] args) {
 
-        //int threadCount = Integer.parseInt(4);
-        //int threadCount = 4;
         //Need to get the current date for the finished folder
         Calendar cal = Calendar.getInstance();
 
@@ -54,26 +41,16 @@ public class ShortPay_Rebill {
         String zipFile = "ShortPay Rebill " + currentDate + ".zip";
 
         String networkFolder = "\\\\fs-01\\toprisiu\\Invoices\\" + sunday + " Weekly Billing\\Zip Files To Process\\";
-
+        //String networkFolder = "C:\\Invoices\\" + sunday + " Weekly Billing\\Zip Files To Process\\"; // for testing
         String pdfLetter = "Letter.pdf";
+        String invoicesLocation;
 
 
         try {
             Config.loadConfigFile("C:\\PW\\pw.txt");
 
-            /*
-            String jobID = "4";
-
-            String scheduleID = Database_Queries.checkIfJobScheduled(jobID);
-
-            if (scheduleID.equalsIgnoreCase("")) {
-                System.exit(0);
-            }
-            Database_Queries.setJobAsStarted(scheduleID);*/
-            
             Utilities.addToLog("Finding invoices to process");
-            ArrayList invoicesToProcess = Database_Queries.findShortPayRebillWeeklyInvoices();
-            //ArrayList claimsForStatusChange = Database_Queries.findShortPayRebillWeeklyInvoices();
+            ArrayList invoicesToProcess = Database_Queries.findShortPayRebillWeeklyInvoices(); //comment for testing
             CookieManager cookies = httpUtilities.getCookie();
             String accessToken = httpUtilities.getAccessToken();
 
@@ -86,28 +63,62 @@ public class ShortPay_Rebill {
             Utilities.cleanDirectory(new File(workingDirInvoice));
             Utilities.cleanDirectory(new File(workingDirMergeLetter));
 
+            //testing
+            //ArrayList invoicesToProcess = new ArrayList();
+            //invoicesToProcess.add(320554);
             int numberOfInvoices = invoicesToProcess.size();
-            //System.out.println(numberOfInvoices);
-            //System.exit(0);
+
             int i = 1;
             for (Object invoice : invoicesToProcess) {
-                //if (i % 50 == 0)
-                //{
-                //accessToken = httpUtilities.getAccessToken();
-                //cookies = httpUtilities.getCookie();
-                //}
 
-                Utilities.addToLog("Starting on Invoice # " + invoice.toString() + " " + i + "/" + numberOfInvoices);
-                String invoicesLocation = httpUtilities.downloadFileAndCheckIntegrity(invoice.toString(), workingDirInvoice, cookies);
-                PdfUtilities.addMergeLetterSingleInvoice(pdfLetter, invoicesLocation, workingDirMergeLetter);
-                ArrayList claimsToChangeStatus = Database_Queries.getAssociatedClaimIDs(invoice.toString());
-
-                for (Object claim : claimsToChangeStatus) {
-                    httpUtilities.addNinjaNoteAndStatusAPI(claim.toString(), "42", "​ADDITIONAL PAYMENT RECON SENT", accessToken);
+                try {
+                    Utilities.addToLog("Starting on Invoice # " + invoice.toString() + " " + i + "/" + numberOfInvoices);
+                    invoicesLocation = httpUtilities.downloadFileAndCheckIntegrity(invoice.toString(), workingDirInvoice, cookies);
+                } catch (Exception ex) {
+                    Utilities.addExceptionToLog(ex);
+                    Utilities.LogError(invoice.toString(), "Download Failed", ex, "ShortPay Rebills");
+                    continue;
                 }
+
+
+                try {
+                    PdfUtilities.addMergeLetterSingleInvoice(pdfLetter, invoicesLocation, workingDirMergeLetter);
+                } catch (Exception ex) {
+                    Utilities.LogError(invoice.toString(), "Merge Failed", ex, "ShortPay Rebills");
+                    continue;
+                }
+
+
+                try {
+                    ArrayList claimsToChangeStatus = Database_Queries.getAssociatedClaimIDs(invoice.toString());
+
+                    for (Object claim : claimsToChangeStatus) {
+                        try {
+                            httpUtilities.addNinjaNoteAndStatusAPI(claim.toString(), "42", "​ADDITIONAL PAYMENT RECON SENT", accessToken);
+                        } catch (Exception ex) {
+                            Utilities.LogError(invoice.toString(), "Add Ninja Note Failed for claim " + claim.toString(), ex, "ShortPay Rebills");
+                            continue;
+                        }
+                    }
+                }
+                catch (Exception ex) {
+                    Utilities.LogError(invoice.toString(), "Get Associated Claim Ids Failed", ex, "ShortPay Rebills");
+                    Utilities.addExceptionToLog(ex);
+                    continue;
+                }
+
+                try{
+
+                    PdfUtilities.GetInvoicenumber(invoicesLocation, workingDirInvoice);
+                }
+                catch(Exception ex)
+                {
+                    Utilities.LogError(invoice.toString(), "Failed to send invoice to letterhub", ex, "ShortPay Rebills");
+                    continue;
+                }
+
                 i++;
             }
-
             //Zip files
             Utilities.addToLog("Zipping Pdfs");
             Utilities.zipFolder(workingDirInvoice, completedDir + zipFile);
@@ -118,18 +129,11 @@ public class ShortPay_Rebill {
             //Move zip file to network folder
             Utilities.addToLog("Copying Zip file to network drive");
             Utilities.copyFolderNew(new File(completedDir + zipFile), new File(networkFolder + zipFile));
-
-            
-            //Database_Queries.setJobAsCompleted(scheduleID);
-        } catch (Exception e) {
+        }
+        catch (Exception e)
+        {
             Utilities.addExceptionToLog(e);
+            Utilities.LogException(e);
         }
     }
-
-    public static void copyFileUsingJava7Files(File source, File dest)
-            throws Exception {
-        Files.copy(source.toPath(), dest.toPath());
-
-    }
-
 }

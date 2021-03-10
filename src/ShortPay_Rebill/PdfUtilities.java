@@ -5,15 +5,6 @@
  */
 package ShortPay_Rebill;
 
-import java.awt.Rectangle;
-import java.io.File;
-import java.io.FilenameFilter;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
 import org.apache.commons.io.FileUtils;
 import org.apache.pdfbox.multipdf.PDFMergerUtility;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -22,6 +13,23 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.text.PDFTextStripperByArea;
+
+import javax.json.bind.Jsonb;
+import javax.json.bind.JsonbBuilder;
+import java.awt.*;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
+import static ShortPay_Rebill.Config.letterhubApiProd;
 
 /**
  *
@@ -207,7 +215,7 @@ public class PdfUtilities {
                     System.out.println(directoryListing[i].getName());
                     String[] compare = directoryListing[i].getName().split(" ");
                     //Checks and sees if the file it's currently looking at is in the list
-                    //Loads the pdf document and it either adds the page number to what's there already 
+                    //Loads the pdf document and it either adds the page number to what's there already
                     //minus the front page, or it creates a new entry.;
                     PDDocument doc = PDDocument.load(directoryListing[i]);
                     if (groupNumPageCount.get(compare[1]) == null) {
@@ -466,7 +474,7 @@ public class PdfUtilities {
                     }
                 }
 
-                //Get the 2nd Row of Meds                
+                //Get the 2nd Row of Meds
                 String ndc2 = PdfUtilities.getText(temp, 230, 542, 60, 10, i); //NDC 2
                 String rx2 = PdfUtilities.getText(temp, 320, 542, 50, 10, i); //Rx2
                 ndc2 = ndc2.trim();
@@ -664,9 +672,9 @@ public class PdfUtilities {
 
     }
 
-    public static void addMergeLetterSingleInvoice(String pdfLetterOrig, String invoiceLoc, String workingDir) {
+    public static void addMergeLetterSingleInvoice(String pdfLetterOrig, String invoiceLoc, String workingDir) throws IOException {
         Utilities.addToLog("Adding Merge Letter");
-        
+
         Calendar cal = Calendar.getInstance();
 
         //Gets the month and then increases it by 1 so Jan = 1
@@ -737,9 +745,151 @@ public class PdfUtilities {
         } catch (Exception e) {
 
             Utilities.addExceptionToLog(e);
+            throw e;
         }
 
     }
+
+    public static void GetInvoicenumber(String invoiceLoc, String workingDir) throws IOException, ExecutionException, InterruptedException {
+        Utilities.addToLog("Extracting Invoice Number");
+
+        Calendar cal = Calendar.getInstance();
+
+        //Gets the month and then increases it by 1 so Jan = 1
+        int month = cal.get(Calendar.MONTH) + 1;
+        //Create the filename dependant on the current date.
+        String currentDate = "" + month + '/' + cal.get(Calendar.DATE) + '/' + cal.get(Calendar.YEAR);
+        String invoiceNumber = "";
+        String file = "";
+        try {
+
+            File completedPdf = new File(invoiceLoc);
+            File invoiceToProcess = new File(invoiceLoc);
+
+            PDDocument doc = PDDocument.load(invoiceToProcess);
+            int count = doc.getNumberOfPages();
+
+            byte[] data = FileUtils.readFileToByteArray(invoiceToProcess);
+
+            if (invoiceToProcess.getName().contains(" ")) {
+
+                file = invoiceToProcess.getName();
+                //Figure out the GroupNum and save it
+                String fileName[] = invoiceToProcess.getName().split(" ");
+
+                invoiceNumber = fileName[0];
+            } else {
+                //Figure out the GroupNum and save it
+                String fileName[] = invoiceToProcess.getName().split("_");
+                file =  invoiceToProcess.getName();
+                invoiceNumber = fileName[0];
+            }
+
+            String[] carrierInfo = Database_Queries.GetInvoiceAddress(invoiceNumber);
+            SendInvoiceToLetterhub(carrierInfo, count, data, file);
+
+        } catch (Exception ex) {
+
+            throw ex;
+        }
+    }
+
+    public static void SendInvoiceToLetterhub(String[] carrierInfo, int count, byte[] data, String file) throws ExecutionException, InterruptedException {
+        try {
+            clsAPICreateJob objAPICreateJob = new clsAPICreateJob();
+            ArrayList<clsAPIFile> apiFile = new ArrayList<clsAPIFile>();
+            objAPICreateJob.setFileArrayList(apiFile);
+            clsAPIFile objAPIFile = new clsAPIFile();
+
+
+            objAPIFile.setFileByteArray(data); //Replace with byte array here
+            objAPIFile.setFileType("pdf");
+            apiFile.add(objAPIFile);
+
+            ArrayList recipients = new ArrayList<clsRecipient>();
+            objAPICreateJob.setRecipients(recipients);
+
+            clsRecipient objRecipient = new clsRecipient();
+
+            //Recipient's Address
+            if (carrierInfo[2] != null && !carrierInfo[2].isEmpty()) {
+                objRecipient.setFirstName(carrierInfo[2]);
+            }
+
+            if (carrierInfo[3] != null && !carrierInfo[3].isEmpty()) {
+                objRecipient.setAddress1(carrierInfo[3]);
+            }
+
+            if (carrierInfo[4] != null && !carrierInfo[4].isEmpty()) {
+                objRecipient.setAddress2(carrierInfo[4]);
+            }
+            if (carrierInfo[5] != null && !carrierInfo[5].isEmpty()) {
+                objRecipient.setCity(carrierInfo[5]);
+            }
+            if (carrierInfo[6] != null && !carrierInfo[6].isEmpty()) {
+                objRecipient.setState(carrierInfo[6]);
+            }
+            if (carrierInfo[7] != null && !carrierInfo[7].isEmpty()) {
+                objRecipient.setZipcode(carrierInfo[7]);
+            }
+
+            recipients.add(objRecipient);
+
+            //From Address
+            clsReturnAddress fromAdd = new clsReturnAddress();
+            fromAdd.setName("WORKERS' COMPENSATION RX SOLUTIONS");
+            fromAdd.setAddress1("P O BOX 654151");
+            fromAdd.setCity("DALLAS");
+            fromAdd.setState("TX");
+            fromAdd.setZipcode("75265-4151\nbilling@wcrxsolution.com");
+            objAPICreateJob.setReturnAddress(fromAdd);
+
+            objAPICreateJob.setPageTypeID(1);// 1 means Letter
+            objAPICreateJob.setIsDuplexPrint(false);
+            objAPICreateJob.setIsColorFile(false);
+            objAPICreateJob.setIsOneBusinessDay(false);
+            objAPICreateJob.setJobName(file);
+            objAPICreateJob.setIncludePaidReturnEnvelope(false);
+            objAPICreateJob.setIncludeReturnEnvelope(false);
+            objAPICreateJob.setIsEcoFriendlyReturnEnvelope(false);
+            objAPICreateJob.setCarrierID("USPS-firstclass");
+            objAPICreateJob.setSource("ByteArray_Application");
+            objAPICreateJob.setIsCOAForwarded(false);
+            objAPICreateJob.setIsNCOAEnable(false);
+            Jsonb jsonb = JsonbBuilder.create();
+            com.google.gson.Gson gson = new com.google.gson.Gson();
+            clsQueueJobResponse objAPIBatchResponse = new clsQueueJobResponse();
+            HttpClient client = HttpClient.newHttpClient();
+            String uri = letterhubApiProd.get("ApiRootURI") + "/" + letterhubApiProd.get("CreateBatch");
+            HttpRequest request = HttpRequest.newBuilder(URI.create(uri))
+                    .POST((HttpRequest.BodyPublishers.ofString(gson.toJson(objAPICreateJob))))
+                    .header("UserAccessKey", letterhubApiProd.get("UserAccessKey").toString())
+                    .header("UserAPIKeyValue", letterhubApiProd.get("UserAPIKeyValue").toString())
+                    .header("ApplicationName", letterhubApiProd.get("ApplicationName").toString())
+                    .header("Content-Type", "application/json")
+                    .build();
+
+            CompletableFuture<HttpResponse<String>> future = client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+            try {
+                if (future.get().statusCode() != 500) {
+                    objAPIBatchResponse = gson.fromJson(future.get().body(), clsQueueJobResponse.class);
+                    Utilities.LogTransmissionDetails(carrierInfo[0],  objAPIBatchResponse.getBatchID(), objAPIBatchResponse.getObjResponseStatus().getResponseStatusCode(),
+                            count, carrierInfo[1], objAPIBatchResponse.getObjResponseStatus().getResponseStatusText());
+
+                }
+            } catch (Exception ex) {
+                throw ex;
+            }
+        future.join();
+
+    }
+
+        catch(Exception ex)
+        {
+            throw ex;
+        }
+    }
+
 
     public static boolean checkPdfIntegrity(String file) {
         try {

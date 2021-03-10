@@ -5,21 +5,21 @@
  */
 package ShortPay_Rebill;
 
-import static ShortPay_Rebill.Config.emailIncomingReports;
 import com.opencsv.CSVReader;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileFilter;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
+import net.lingala.zip4j.core.ZipFile;
+import net.lingala.zip4j.model.ZipParameters;
+import org.apache.commons.io.FileUtils;
+
+import javax.activation.DataHandler;
+import javax.activation.DataSource;
+import javax.activation.FileDataSource;
+import javax.mail.*;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
+import java.io.*;
+import java.net.InetAddress;
 import java.nio.file.Files;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -29,30 +29,27 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Properties;
-import javax.activation.DataHandler;
-import javax.activation.DataSource;
-import javax.activation.FileDataSource;
-import javax.mail.BodyPart;
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.Multipart;
-import javax.mail.PasswordAuthentication;
-import javax.mail.Authenticator;
-import javax.mail.Session;
-import javax.mail.Transport;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMessage;
-import javax.mail.internet.MimeMultipart;
-import net.lingala.zip4j.core.ZipFile;
-import net.lingala.zip4j.model.ZipParameters;
-import org.apache.commons.io.FileUtils;
+
+import static ShortPay_Rebill.Config.emailIncomingReports;
 
 /**
  *
  * @author toprisiu
  */
 public class Utilities {
+
+    public static Date date;
+    public static SimpleDateFormat formatter;
+
+    public static  StringWriter sw;
+
+   public Utilities()
+   {
+       date = new Date();
+       formatter = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
+   }
+
+
 
     public static void copyFiles(File source, File dest)
             throws Exception {
@@ -101,7 +98,7 @@ public class Utilities {
         }
     }
 
-    public static void copyFolderNew(File src, File dest) {
+    public static void copyFolderNew(File src, File dest) throws IOException {
         try {
 
             if (src.isDirectory()) {
@@ -144,6 +141,7 @@ public class Utilities {
             }
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
+            throw e;
         }
     }
 
@@ -219,11 +217,12 @@ public class Utilities {
         }
     }
 
-    public static void cleanDirectory(File folderDir) {
+    public static void cleanDirectory(File folderDir) throws IOException {
         try {
             FileUtils.cleanDirectory(folderDir);
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
+            throw e;
         }
     }
 
@@ -431,21 +430,133 @@ public class Utilities {
         return importQuery;
     }
 
-    public static void importSqlQuery(String sqlQuery) {
-        try {
 
-            Connection connMySQL = DatabaseConnections.connectToMySQL();
-            Statement stmtMySQL = connMySQL.createStatement();
-            //Grabs the data
 
-            Utilities.addToLog("Executing Import Query");
-            stmtMySQL.executeUpdate(sqlQuery);
+    public static void LogError(String invoiceNumber, String message, Exception ex, String app) {
+        sw = new StringWriter();
+        ex.printStackTrace(new PrintWriter(sw));
+        String exceptionAsString = sw.toString();
+        date = new Date();
+        formatter = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
+        String user = System.getProperty("user.name");
+        InetAddress localhost = null;
+        try
+        {
+            localhost = InetAddress.getLocalHost();
+        }
 
-            connMySQL.close();
+        catch(Exception e)
+        {
+            Utilities.addExceptionToLog(e);
+        }
 
-        } catch (Exception e) {
-            Utilities.addExceptionToLogAndExit(e);
-            System.exit(0);
+        try
+        {
+            Connection connToSqlServer = DatabaseConnections.connectToMSSql();
+            String query = "INSERT INTO log ("
+                                                + " Date,"
+                                                + " InvoiceNumber,"
+                                                + " Message,"
+                                                + " Exception,"
+                                                + " UserName,"
+                                                + " IPAddress,"
+                                                + " StackTrace,"
+                                                + " Application) VALUES ("
+                                                + "?, ?, ?, ?, ?, ?, ?, ?)";
+
+            // set all the preparedstatement parameters
+            java.sql.PreparedStatement st = connToSqlServer.prepareStatement(query);
+            st.setString(1, formatter.format(date));
+            st.setString(2, invoiceNumber);
+            st.setString(3, message);
+            st.setString(4, ex.toString());
+            st.setString(5, user);
+            st.setString(6, String.valueOf(localhost));
+            st.setString(7, exceptionAsString);
+            st.setString(8, app);
+
+            // execute the preparedstatement insert
+            st.executeUpdate();
+            st.close();
+        }
+        catch(Exception e)
+        {
+            LogException((e));
+        }
+    }
+
+    public static void LogException(Exception ex)  {
+        sw = new StringWriter();
+        ex.printStackTrace(new PrintWriter(sw));
+        String exceptionAsString = sw.toString();
+        date = new Date();
+        formatter = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
+        try
+        {
+            Connection connToSqlServer = DatabaseConnections.connectToMSSql();
+            String query = "INSERT INTO log ("
+                    + " Date,"
+                    + " Message,"
+                    + " Exception,"
+                    + " UserName,"
+                    + " StackTrace,"
+                    + " Application) VALUES ("
+                    + "?, ?, ?, ?, ?, ?)";
+
+            // set all the preparedstatement parameters
+            java.sql.PreparedStatement st = connToSqlServer.prepareStatement(query);
+            st.setString(1, formatter.format(date));
+            st.setString(2, ex.getMessage());
+            st.setString(3, ex.toString());
+            st.setString(4, System.getProperty("user.name"));
+            st.setString(5, exceptionAsString);
+            st.setString(6, "ShortPayRebills");
+
+            // execute the preparedstatement insert
+            st.executeUpdate();
+            st.close();
+        }
+        catch(Exception e)
+        {
+            addExceptionToLog(e);
+        }
+    }
+
+    public static void LogTransmissionDetails(String invoiceNumber, String batchId, Integer statusCode, Integer noOfPages, String invoiceDate, String statusDescription)
+    {
+        date = new Date();
+        formatter = new SimpleDateFormat("dd-MM-yyyy HH:mm:ss");
+        try
+        {
+            Connection connToSqlServer = DatabaseConnections.connectToMSSql();
+            String query = "INSERT INTO RebillsLetterhubInvoiceTransmissionLog ("
+                    + " InvoiceNumber,"
+                    + " TransmissionDateTime,"
+                    + " BatchId,"
+                    + " StatusCode,"
+                    + " NoOfPages,"
+                    + " InvoiceDate,"
+                    + " StatusDescription) VALUES ("
+                    + "?, ?, ?, ?, ?, ?, ?)";
+
+            // set all the preparedstatement parameters
+            java.sql.PreparedStatement st = connToSqlServer.prepareStatement(query);
+
+            st.setString(1, invoiceNumber);
+            st.setString(2, formatter.format(date));
+            st.setString(3, batchId);
+            st.setString(4, statusCode.toString());
+            st.setString(5, noOfPages.toString());
+            st.setString(6, invoiceDate);
+            st.setString(7, statusDescription);
+
+            // execute the preparedstatement insert
+            st.executeUpdate();
+            st.close();
+        }
+        catch(Exception e)
+        {
+            LogException((e));
         }
 
     }
@@ -478,6 +589,7 @@ public class Utilities {
             return "";
         }
     }
+
 
     public static String readFile(String fileName) throws IOException {
         BufferedReader br = new BufferedReader(new FileReader(fileName));
@@ -515,10 +627,16 @@ public class Utilities {
     
     public static void createFolderIfMissing(String folder)
     {
-        File file = new File(folder);
-        if(!file.exists())
+        try {
+            File file = new File(folder);
+            if (!file.exists()) {
+                file.mkdirs();
+            }
+        }
+
+        catch(Exception ex)
         {
-            file.mkdirs();
+            throw ex;
         }
     }
     

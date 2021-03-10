@@ -7,6 +7,7 @@ package ShortPay_Rebill;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 
@@ -16,10 +17,13 @@ import java.util.ArrayList;
  */
 public class Database_Queries {
 
-    public static ArrayList findUnprocessedInvoices() {
-        Connection connFireBird = DatabaseConnections.connectToFirebird();
-        ArrayList<String> invoicesToProcess = new ArrayList<String>();
-        try {
+    public static ArrayList findUnprocessedInvoices() throws SQLException, ClassNotFoundException {
+        ArrayList<String> invoicesToProcess = null;
+        try
+        {
+            Connection connFireBird = DatabaseConnections.connectToFirebird();
+            invoicesToProcess = new ArrayList<String>();
+
             Statement stmtFB = connFireBird.createStatement();
             String firebirdQuery = "SELECT PF_ID, ORIG_FILENAME\n"
                     + "FROM PROCESS_FILE a\n"
@@ -32,14 +36,19 @@ public class Database_Queries {
             return invoicesToProcess;
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return invoicesToProcess;
+            throw e;
+            //return invoicesToProcess;
         }
     }
 
     public static ArrayList findNotReceivedInvoices() {
-        Connection connFireBird = DatabaseConnections.connectToFirebird();
-        ArrayList<String> invoicesToProcess = new ArrayList<String>();
-        try {
+
+        ArrayList<String> invoicesToProcess = null;
+        try
+        {
+            Connection connFireBird = DatabaseConnections.connectToFirebird();
+            invoicesToProcess = new ArrayList<String>();
+
             Statement stmtFB = connFireBird.createStatement();
             String firebirdQuery = "SELECT DISTINCT(CLAIM.LAKER_INVOICE_NO)\n"
                     + "FROM CLAIM\n"
@@ -60,9 +69,12 @@ public class Database_Queries {
     }
 
     public static ArrayList getNotReceivedInvoicesAssociatedClaims() {
-        Connection connFireBird = DatabaseConnections.connectToFirebird();
-        ArrayList<String> invoicesToProcess = new ArrayList<String>();
-        try {
+        ArrayList<String> invoicesToProcess = null;
+        try
+        {
+            Connection connFireBird = DatabaseConnections.connectToFirebird();
+            invoicesToProcess = new ArrayList<String>();
+
             Statement stmtFB = connFireBird.createStatement();
             String firebirdQuery = "SELECT DISTINCT(CLAIM.CLAIM_ID)\n"
                     + "FROM CLAIM\n"
@@ -127,6 +139,31 @@ public class Database_Queries {
         }
     }
 
+    public static String[] GetInvoiceAddress(String invoiceNumber) {
+        Connection connMySql = DatabaseConnections.connectToMySQL();
+        String[] carrierInfo = new String[8];
+        try {
+            Statement stmtMySql = connMySql.createStatement();
+            String mySqlQuery = "select b.LAKER_INVOICE_NO, b.INVOICE_DATE, a.ACCOUNT_NAME, " +
+                                "a.ACCT_ADDRESS1,a.ACCT_ADDRESS2,a.ACCT_CITY,a.ACCT_STATE,a.ACCT_ZIPCODE " +
+                                "from ar_account a, claim b where a.AR_ID = b.FK_AR_ID and " +
+                                "b.LAKER_INVOICE_NO = " + invoiceNumber +
+                                " LIMIT 1";
+            ResultSet rs = stmtMySql.executeQuery(mySqlQuery);
+            while (rs.next()) {
+                for (int i = 0; i < 8; i++) {
+                    carrierInfo[i] = rs.getString(i + 1);
+                }
+
+            }
+            connMySql.close();
+            return carrierInfo;
+        } catch (Exception e) {
+            Utilities.addExceptionToLog(e);
+            return carrierInfo;
+        }
+    }
+
     public static ArrayList findInvoicesToRebill(String sqlQuerLoc) {
         Connection connMySql = DatabaseConnections.connectToMySQL();
         ArrayList<String> invoicesToRebill = new ArrayList<String>();
@@ -150,10 +187,13 @@ public class Database_Queries {
     }
 
     public static ArrayList testFB(ArrayList invoices) {
-        Connection connFirebird = DatabaseConnections.connectToFirebird();
-        ArrayList<String> invoicesChangeStatus = new ArrayList<String>();
-        Utilities.addToLog("Finding Invoices");
-        try {
+        ArrayList<String> invoicesChangeStatus = null;
+        try
+        {
+            Connection connFirebird = DatabaseConnections.connectToFirebird();
+            invoicesChangeStatus = new ArrayList<String>();
+            Utilities.addToLog("Finding Invoices");
+
             String invoicesToQuery = "";
             for (int i = 0; i < invoices.size(); i++) {
                 String temp[] = invoices.get(i).toString().split("\\*");
@@ -209,12 +249,16 @@ public class Database_Queries {
         }
     }
 
-    public static ArrayList findShortPayRebillWeeklyInvoices() {
-        Connection connFirebird = DatabaseConnections.connectToFirebird();
-        ArrayList invoicesToProcess = new ArrayList();
-        String[] dates = Utilities.getDatesForLastWeek();
+    public static ArrayList findShortPayRebillWeeklyInvoices() throws SQLException, ClassNotFoundException {
 
-        try {
+        ArrayList invoicesToProcess = null;
+        try
+        {
+            Connection connFirebird = DatabaseConnections.connectToFirebird();
+            invoicesToProcess = new ArrayList();
+            String[] dates = Utilities.getDatesForLastWeek();
+
+
             String firebirdQuery = "SELECT DISTINCT\n"
                     + "                        (LAKER_INVOICE_NO)\n"
                     + "                    FROM\n"
@@ -230,7 +274,8 @@ public class Database_Queries {
                     + "                    WHERE\n"
                     + "                        AR_ACCOUNT.ACCOUNT_NAME NOT LIKE '%PIP%'\n"
                     + "                            AND AR_ACCOUNT.AR_ID NOT IN (4886, 11278)\n"
-                    + "                            AND CLAIM.VENUE_STATE NOT IN ('ME', 'MO', 'NE', 'NH', 'NJ', 'SD', 'UT', 'VA', 'MD', 'DC', 'IA', 'IL', 'IN', 'WV')\n"
+                    + "                            AND CLAIM.VENUE_STATE NOT IN ('ME', 'MO', 'NE', 'NH', 'NJ', 'SD', 'UT', 'VA', 'MD', 'DC', 'IA', 'IL', 'IN', 'WV',\n"
+                    + "                                 'CA', 'AR', 'KY', 'MT', 'NC', 'NV', 'OH', 'OR', 'RI', 'NY', 'CT', 'MO')\n"
                     + "                            AND claim.L_CLAIMANT_LNAME NOT LIKE '%PIP%'\n"
                     + "                            AND AR_RECEIPT_ALLOC.ALLOC_AMOUNT != 0\n"
                     + "                            AND CLAIM.CLAIM_ID NOT IN (SELECT CLAIM_ACTIVITY.FK_CLAIM_ID\n"
@@ -267,7 +312,8 @@ public class Database_Queries {
                     + "                        AP_ACCOUNT.AP_ID = 210\n"
                     + "                            AND AR_ACCOUNT.ACCOUNT_NAME NOT LIKE '%PIP%'\n"
                     + "                            AND AR_ACCOUNT.AR_ID NOT IN (4886, 11278)\n"
-                    + "                            AND CLAIM.VENUE_STATE NOT IN ('ME', 'MO', 'NE', 'NH', 'NJ', 'SD', 'UT', 'VA', 'MD', 'DC', 'IA', 'IL', 'IN', 'WV')\n"
+                    + "                            AND CLAIM.VENUE_STATE NOT IN ('ME', 'MO', 'NE', 'NH', 'NJ', 'SD', 'UT', 'VA', 'MD', 'DC', 'IA', 'IL', 'IN', 'WV',\n"
+                    + "                                 'CA', 'AR', 'KY', 'MT', 'NC', 'NV', 'OH', 'OR', 'RI', 'NY', 'CT', 'MO')\n"
                     + "                            AND claim.L_CLAIMANT_LNAME NOT LIKE '%PIP%'\n"
                     + "                            AND AR_RECEIPT_ALLOC.ALLOC_AMOUNT != 0\n"
                     + "                            AND CLAIM.CLAIM_ID NOT IN (SELECT CLAIM_ACTIVITY.FK_CLAIM_ID\n"
@@ -296,17 +342,18 @@ public class Database_Queries {
 
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return invoicesToProcess;
+            throw e;
+            //return invoicesToProcess;
         }
     }
 
-    public static ArrayList getProcessFileIDs(String invoiceNumber) {
-        Connection connFirebird = DatabaseConnections.connectToFirebird();
-        ArrayList invoiceDownloadInfo = new ArrayList();
-        String[] dates = Utilities.getDatesForLastWeek();
-
-        try {
-
+    public static ArrayList getProcessFileIDs(String invoiceNumber) throws SQLException, ClassNotFoundException {
+        ArrayList invoiceDownloadInfo = null;
+        try
+        {
+            Connection connFirebird = DatabaseConnections.connectToFirebird();
+            invoiceDownloadInfo = new ArrayList();
+            String[] dates = Utilities.getDatesForLastWeek();
             String firebirdQuery = "SELECT PF_ID, ORIG_FILENAME FROM PROCESS_FILE WHERE LAKER_INV_NO = " + invoiceNumber + " ORDER BY PF_ID DESC";
             Statement stmtFirebird = connFirebird.createStatement();
             //System.out.println(firebirdQuery);
@@ -319,16 +366,18 @@ public class Database_Queries {
 
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return invoiceDownloadInfo;
+            //return invoiceDownloadInfo;
+            throw e;
         }
     }
 
-    public static ArrayList getAssociatedClaimIDs(String invoiceNumber) {
-        Connection connFirebird = DatabaseConnections.connectToFirebird();
-        ArrayList invoicesToProcess = new ArrayList();
-        String[] dates = Utilities.getDatesForLastWeek();
-
-        try {
+    public static ArrayList getAssociatedClaimIDs(String invoiceNumber) throws SQLException, ClassNotFoundException {
+        ArrayList invoicesToProcess = null;
+        try
+        {
+            Connection connFirebird = DatabaseConnections.connectToFirebird();
+            invoicesToProcess = new ArrayList();
+            String[] dates = Utilities.getDatesForLastWeek();
             String firebirdQuery = "SELECT DISTINCT\n"
                     + "                        (CLAIM_ID)\n"
                     + "                    FROM\n"
@@ -410,7 +459,8 @@ public class Database_Queries {
 
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return invoicesToProcess;
+            throw e;
+            //return invoicesToProcess;
         }
     }
 

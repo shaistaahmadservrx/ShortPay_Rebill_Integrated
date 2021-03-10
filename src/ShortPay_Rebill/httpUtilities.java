@@ -5,47 +5,36 @@
  */
 package ShortPay_Rebill;
 
-import static ShortPay_Rebill.Config.ninjaAutoUser;
-import static ShortPay_Rebill.Config.ninjaDownloadUser;
-import com.gargoylesoftware.htmlunit.CookieManager;
-import com.gargoylesoftware.htmlunit.HttpMethod;
-import com.gargoylesoftware.htmlunit.Page;
-import com.gargoylesoftware.htmlunit.UnexpectedPage;
-import com.gargoylesoftware.htmlunit.WebClient;
-import com.gargoylesoftware.htmlunit.WebRequest;
-import com.gargoylesoftware.htmlunit.WebResponse;
-import com.gargoylesoftware.htmlunit.html.DomElement;
-import com.gargoylesoftware.htmlunit.html.DomNodeList;
-import com.gargoylesoftware.htmlunit.html.HtmlAnchor;
-import com.gargoylesoftware.htmlunit.html.HtmlForm;
-import com.gargoylesoftware.htmlunit.html.HtmlOption;
-import com.gargoylesoftware.htmlunit.html.HtmlPage;
-import com.gargoylesoftware.htmlunit.html.HtmlPasswordInput;
-import com.gargoylesoftware.htmlunit.html.HtmlSelect;
-import com.gargoylesoftware.htmlunit.html.HtmlSubmitInput;
-import com.gargoylesoftware.htmlunit.html.HtmlTextArea;
-import com.gargoylesoftware.htmlunit.html.HtmlTextInput;
+import com.gargoylesoftware.htmlunit.*;
+import com.gargoylesoftware.htmlunit.html.*;
 import com.gargoylesoftware.htmlunit.util.NameValuePair;
-
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.apache.commons.logging.LogFactory;
+
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
-import org.apache.commons.logging.LogFactory;
+
+import static ShortPay_Rebill.Config.ninjaAutoUser;
+import static ShortPay_Rebill.Config.ninjaDownloadUser;
 
 /**
  *
  * @author toprisiu
  */
 public class httpUtilities {
+
+    public static int retries = 0;
 
     public static void downloadFileWithLogin(List invoicesToProcess, String downloadDir) {
         try {
@@ -178,7 +167,7 @@ public class httpUtilities {
         }
     }
 
-    public static String getAccessToken() {
+    public static String getAccessToken() throws IOException {
         String accessToken = null;
         String login = ninjaAutoUser.get("login").toString();
         String password = ninjaAutoUser.get("password").toString();
@@ -210,11 +199,12 @@ public class httpUtilities {
             return accessToken;
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return accessToken;
+            throw e;
+            //return accessToken;
         }
     }
 
-    public static void addNinjaNoteAndStatusAPI(String claim, String claimStatusID, String note, String accessToken) throws InterruptedException {
+    public static void addNinjaNoteAndStatusAPI(String claim, String claimStatusID, String note, String accessToken) throws InterruptedException, IOException {
 
         try {
             Utilities.addToLog("Changing Status for ClaimID: " + claim);
@@ -246,12 +236,14 @@ public class httpUtilities {
             WebResponse response = redirectPage.getWebResponse();
 
         } catch (Exception e) {
+            retries = retries + 1;
             Utilities.addExceptionToLog(e);
             Utilities.addToLog("Pausing 15 seconds");
-
             TimeUnit.SECONDS.sleep(15);
-
-            httpUtilities.addNinjaNoteAndStatusAPI(claim, claimStatusID, note, accessToken);
+            if(retries <= 3)
+                httpUtilities.addNinjaNoteAndStatusAPI(claim, claimStatusID, note, accessToken);
+            else
+                throw e;
         }
     }
 
@@ -296,7 +288,7 @@ public class httpUtilities {
         }
     }
 
-    public static CookieManager getCookie() {
+    public static CookieManager getCookie() throws IOException {
         CookieManager cookies = new CookieManager();
 
         try {
@@ -328,11 +320,12 @@ public class httpUtilities {
             return cookies;
         } catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return cookies;
+            throw e;
+            //return cookies;
         }
     }
 
-    public static String downloadFileAndCheckIntegrity(String invoiceNumber, String downloadLoc, CookieManager cookies) {
+    public static String downloadFileAndCheckIntegrity(String invoiceNumber, String downloadLoc, CookieManager cookies) throws SQLException, IOException, ClassNotFoundException {
         final WebClient webClient = new WebClient();
         //webClient.setCookieManager(getCookie());
         webClient.setCookieManager(cookies);
@@ -343,35 +336,47 @@ public class httpUtilities {
             ArrayList invoiceDownloadInfo = Database_Queries.getProcessFileIDs(invoiceNumber);
 
             for (int i = 0; i < invoiceDownloadInfo.size(); i++) {
-                if (!downloaded) {
+                try {
+                    if (!downloaded) {
 
-                    String temp[] = invoiceDownloadInfo.get(i).toString().split("\\*");
-                    UnexpectedPage pdfFile = null;
-                    if (!webClient.getPage("http://ninja.servrx.com/index.php/edi_files/download/" + temp[0]).isHtmlPage()) {
-                        pdfFile = webClient.getPage("http://ninja.servrx.com/index.php/edi_files/download/" + temp[0]);
-                        webClient.waitForBackgroundJavaScript(60000);
-                        InputStream is = pdfFile.getInputStream();
-                        destination = Paths.get(downloadLoc + temp[1]);
-                        destination.toFile();
+                        String temp[] = invoiceDownloadInfo.get(i).toString().split("\\*");
+                        UnexpectedPage pdfFile = null;
+                        if (!webClient.getPage("http://ninja.servrx.com/index.php/edi_files/download/" + temp[0]).isHtmlPage()) {
+                            pdfFile = webClient.getPage("http://ninja.servrx.com/index.php/edi_files/download/" + temp[0]);
+                            webClient.waitForBackgroundJavaScript(60000);
+                            InputStream is = pdfFile.getInputStream();
+                            destination = Paths.get(downloadLoc + temp[1]);
+                            destination.toFile();
 
-                        Files.copy(is, destination);
-                        downloaded = PdfUtilities.checkPdfIntegrity(destination.toString());
-                        if (!downloaded) {
+                            Files.copy(is, destination);
+                            downloaded = PdfUtilities.checkPdfIntegrity(destination.toString());
+                       if (!downloaded) {
                             File downloadFile = new File(destination.toString());
                             downloadFile.delete();
                         }
-                    } else {
-                        Utilities.addToLog("Error with Invoice: " + temp[0] + " - " + temp[1]);
+                        }
+
+                        else {
+                            Utilities.addToLog("Error with Invoice: " + temp[0] + " - " + temp[1]);
+                        }
                     }
+                }
+
+                catch(Exception ex)
+                {
+                   throw ex;
                 }
             }
             Utilities.addToLog("Finished downloading");
             return destination.toString();
-
-        } catch (Exception e) {
+            }
+        catch (Exception e) {
             Utilities.addExceptionToLog(e);
-            return destination.toString();
+            //return destination.toString();
+            throw e;
         }
     }
+
+
 
 }

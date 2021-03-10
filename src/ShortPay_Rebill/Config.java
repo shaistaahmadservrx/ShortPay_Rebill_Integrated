@@ -31,7 +31,8 @@ public class Config {
     public static Map sftpIncomingNotes;
     public static Map ringCentralExtension;
     public static Map lakerAutoUser;
-
+    public static Map sqlServerDatabaseProd;
+    public static Map letterhubApiProd;
     public static boolean loadConfigFile(String fileLoc) {
         Utilities.addToLog("Loading Config File");
         Map configFile = readConfigFile(fileLoc);
@@ -86,6 +87,12 @@ public class Config {
             
             Map lakerAPI = (Map) configFile.get("lakerAPI");
             lakerAutoUser = (Map) lakerAPI.get("autouser");
+
+            Map sqlServerDatabase = (Map) configFile.get("sqlServerDatabase");
+            sqlServerDatabaseProd = (Map) sqlServerDatabase.get("Production");
+
+            Map letterhubApi = (Map) configFile.get("letterhubApi");
+            letterhubApiProd = (Map) letterhubApi.get("Production");
             
             return true;
         } catch (Exception e) {
@@ -105,6 +112,8 @@ public class Config {
         Map<String, Map> sftp = new HashMap<String, Map>();
         Map<String, Map> ringCentral = new HashMap<String, Map>();
         Map<String, Map> lakerAPI = new HashMap<String, Map>();
+        Map<String, Map> sqlServerDatabase = new HashMap<String, Map>();
+        Map<String, Map> letterhubApi = new HashMap<String, Map>();
 
         try {
             String configFile = Config.readFile(fileLoc);
@@ -187,6 +196,26 @@ public class Config {
                         connectionInfo.put("authorization", tempLine[1]);
                         lakerAPI.put(tempLine[0], connectionInfo);
                     }
+                    //Sql Server
+                    else if (type.equalsIgnoreCase("SqlServer_Database")) {
+                        String[] tempLine = line.split("~");
+                        Map<String, String> connectionInfo = new HashMap<String, String>();
+                        connectionInfo.put("connectionString", tempLine[1]);
+                        sqlServerDatabase.put(tempLine[0], connectionInfo);
+                    }
+                    //Letterhub Api
+                    else if (type.equalsIgnoreCase("LetterhubApi")) {
+                        String[] tempLine = line.split("~");
+                        Map<String, String> connectionInfo = new HashMap<String, String>();
+                        connectionInfo.put("ApiRootURI", tempLine[1]);
+                        connectionInfo.put("CreateBatch", tempLine[2]);
+                        connectionInfo.put("GetBatchDetails", tempLine[3]);
+                        connectionInfo.put("CreateBatchURL", tempLine[4]);
+                        connectionInfo.put("UserAccessKey", tempLine[5]);
+                        connectionInfo.put("UserAPIKeyValue", tempLine[6]);
+                        connectionInfo.put("ApplicationName", tempLine[7]);
+                        letterhubApi.put(tempLine[0], connectionInfo);
+                    }
 
                 }
             }
@@ -199,6 +228,8 @@ public class Config {
             configFileMap.put("sftp", sftp);
             configFileMap.put("ringCentral", ringCentral);
             configFileMap.put("lakerAPI", lakerAPI);
+            configFileMap.put("sqlServerDatabase", sqlServerDatabase);
+            configFileMap.put("letterhubApi", letterhubApi);
             
             return configFileMap;
 

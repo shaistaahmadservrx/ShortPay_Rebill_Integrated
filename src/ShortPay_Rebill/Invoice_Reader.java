@@ -5,15 +5,12 @@
  */
 package ShortPay_Rebill;
 
-import java.sql.Connection;
-import java.sql.Statement;
-
 /**
  *
  * @author toprisiu
  */
 public class Invoice_Reader {
-
+   /*
     public static String[] readFL(String loc, String invoiceNumber) {
         Connection connMySQL = DatabaseConnections.connectToMySQL();
         int drugNumber = 1;
@@ -85,4 +82,6 @@ public class Invoice_Reader {
         return items;
 
     }
+    */
+
 }
