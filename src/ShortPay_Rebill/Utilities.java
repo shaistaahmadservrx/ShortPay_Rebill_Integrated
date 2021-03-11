@@ -28,6 +28,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Map;
 import java.util.Properties;
 
 import static ShortPay_Rebill.Config.emailIncomingReports;
@@ -402,6 +403,117 @@ public class Utilities {
         }
     }
 
+    public static void SendNotificationEmail(Map<String, Exception> invoicesFailedToDownload, Map<String, Exception> invoicesFailedToMerge, Map<String, Exception> invoicesFailedToAddNote,
+                                             Map<String, Exception> claimsFailedToAddNote, Map<String, Exception> invoicesFailedToSend)
+    {
+        final String fromEmail = emailIncomingReports.get("email").toString(); //requires valid gmail id
+        final String password = emailIncomingReports.get("password").toString(); // correct password for gmail id
+        final String toEmail = "sahmad@servrx.com"; // can be any email id
+
+        String body =  "<table width='100%' border='1' align='center'>"
+                + "<tr align='center'>"
+                + "<td><b>Invoice Number <b></td>"
+                + "<td><b>Exception<b></td>"
+                + "</tr>";
+        System.out.println("TLSEmail Start");
+        Properties props = new Properties();
+        props.put("mail.smtp.host", "smtp.gmail.com"); //SMTP Host
+        props.put("mail.smtp.port", "587"); //TLS Port
+        props.put("mail.smtp.auth", "true"); //enable authentication
+        props.put("mail.smtp.starttls.enable", "true"); //enable STARTTLS
+
+        //create Authenticator object to pass in Session.getInstance argument
+        Authenticator auth = new Authenticator() {
+            //override the getPasswordAuthentication method
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(fromEmail, password);
+            }
+        };
+        Session session = Session.getInstance(props, auth);
+
+        try {
+            MimeMessage msg = new MimeMessage(session);
+            msg.addHeader("Content-type", "text/HTML; charset=UTF-8");
+            msg.addHeader("format", "flowed");
+            msg.addHeader("Content-Transfer-Encoding", "8bit");
+
+            msg.setFrom(new InternetAddress("incomingreports@servrx.com", "NoReply-JD"));
+
+            msg.setReplyTo(InternetAddress.parse("incomingreports@servrx.com", false));
+
+
+            msg.setSentDate(new Date());
+
+            msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail, false));
+
+            // Create the message body part
+            BodyPart messageBodyPart = new MimeBodyPart();
+
+            // Fill the message
+            if(invoicesFailedToDownload.size() > 0) {
+                msg.setSubject("Download Failed", "UTF-8");
+                for (Map.Entry<String, Exception> me :invoicesFailedToDownload.entrySet()) {
+                    body += "<tr align='center'>"+"<td>" + me.getKey() + "</td>"
+                            + "<td>" + me.getValue() + "</td>"+"</tr>";
+                }
+
+            }
+
+            if(invoicesFailedToMerge.size() > 0) {
+                msg.setSubject("Merge Failed", "UTF-8");
+                for (Map.Entry<String, Exception> me :invoicesFailedToMerge.entrySet()) {
+                    body += "<tr align='center'>"+"<td>" + me.getKey() + "</td>"
+                            + "<td>" + me.getValue() + "</td>"+"</tr>";
+                }
+            }
+
+            if(invoicesFailedToAddNote.size() > 0) {
+                msg.setSubject("Invoice Add Note Failed", "UTF-8");
+                for (Map.Entry<String, Exception> me :invoicesFailedToAddNote.entrySet()) {
+                    body += "<tr align='center'>"+"<td>" + me.getKey() + "</td>"
+                            + "<td>" + me.getValue() + "</td>"+"</tr>";
+                }
+            }
+
+            if(claimsFailedToAddNote.size() > 0) {
+                msg.setSubject("Claim Add Note Failed", "UTF-8");
+                for (Map.Entry<String, Exception> me :claimsFailedToAddNote.entrySet()) {
+                    body += "<tr align='center'>"+"<td>" + me.getKey() + "</td>"
+                            + "<td>" + me.getValue() + "</td>"+"</tr>";
+                }
+            }
+
+            if(invoicesFailedToSend.size() > 0) {
+                msg.setSubject("Invoice Failed to Sent To Letterhub", "UTF-8");
+                for (Map.Entry<String, Exception> me :invoicesFailedToSend.entrySet()) {
+                    body += "<tr align='center'>"+"<td>" + me.getKey() + "</td>"
+                            + "<td>" + me.getValue() + "</td>"+"</tr>";
+                }
+            }
+
+
+            messageBodyPart.setContent(body, "text/HTML; charset=UTF-8");
+            //messageBodyPart.setText(body);
+
+            // Create a multipart message for attachment
+            Multipart multipart = new MimeMultipart();
+
+            // Set text message part
+            multipart.addBodyPart(messageBodyPart);
+
+            // Send the complete message parts
+            msg.setContent(multipart);
+
+            // Send message
+            Transport.send(msg);
+            System.out.println("EMail Sent Successfully with attachment!!");
+        } catch (MessagingException e) {
+            e.printStackTrace();
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+
+    }
     public static String createExpressScriptsImportQueryCSV(String csvFile) {
         String importQuery = "INSERT INTO express_scripts.fl_repack_data\n"
                 + "(`RX_NUMBER`, `NDC_1`,`NDC_2`,`NPI`)\n"

@@ -768,6 +768,7 @@ public class PdfUtilities {
 
             PDDocument doc = PDDocument.load(invoiceToProcess);
             int count = doc.getNumberOfPages();
+            doc.close();
 
             byte[] data = FileUtils.readFileToByteArray(invoiceToProcess);
 

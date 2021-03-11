@@ -12,6 +12,8 @@ import com.gargoylesoftware.htmlunit.CookieManager;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Map;
 
 
 /**
@@ -45,6 +47,12 @@ public class ShortPay_Rebill {
         String pdfLetter = "Letter.pdf";
         String invoicesLocation;
 
+        Map<String, Exception> invoicesFailedToDownload = new HashMap<String, Exception>();
+        Map<String, Exception> invoicesFailedToMerge = new HashMap<String, Exception>();
+        Map<String, Exception> invoicesFailedToAddNote = new HashMap<String, Exception>();
+        Map<String, Exception> claimsFailedToAddNote = new HashMap<String, Exception>();
+        Map<String, Exception> invoicesFailedToSend = new HashMap<String, Exception>();
+
 
         try {
             Config.loadConfigFile("C:\\PW\\pw.txt");
@@ -65,7 +73,9 @@ public class ShortPay_Rebill {
 
             //testing
             //ArrayList invoicesToProcess = new ArrayList();
-            //invoicesToProcess.add(320554);
+            //invoicesToProcess.add(32);
+            //invoicesToProcess.add(33);
+            //invoicesToProcess.add(3432);
             int numberOfInvoices = invoicesToProcess.size();
 
             int i = 1;
@@ -77,6 +87,7 @@ public class ShortPay_Rebill {
                 } catch (Exception ex) {
                     Utilities.addExceptionToLog(ex);
                     Utilities.LogError(invoice.toString(), "Download Failed", ex, "ShortPay Rebills");
+                    invoicesFailedToDownload.put(invoice.toString(), ex);
                     continue;
                 }
 
@@ -85,9 +96,9 @@ public class ShortPay_Rebill {
                     PdfUtilities.addMergeLetterSingleInvoice(pdfLetter, invoicesLocation, workingDirMergeLetter);
                 } catch (Exception ex) {
                     Utilities.LogError(invoice.toString(), "Merge Failed", ex, "ShortPay Rebills");
+                    invoicesFailedToMerge.put(invoice.toString(), ex);
                     continue;
                 }
-
 
                 try {
                     ArrayList claimsToChangeStatus = Database_Queries.getAssociatedClaimIDs(invoice.toString());
@@ -97,12 +108,14 @@ public class ShortPay_Rebill {
                             httpUtilities.addNinjaNoteAndStatusAPI(claim.toString(), "42", "​ADDITIONAL PAYMENT RECON SENT", accessToken);
                         } catch (Exception ex) {
                             Utilities.LogError(invoice.toString(), "Add Ninja Note Failed for claim " + claim.toString(), ex, "ShortPay Rebills");
+                            claimsFailedToAddNote.put(invoice.toString(), ex);
                             continue;
                         }
                     }
                 }
                 catch (Exception ex) {
                     Utilities.LogError(invoice.toString(), "Get Associated Claim Ids Failed", ex, "ShortPay Rebills");
+                    invoicesFailedToAddNote.put(invoice.toString(), ex);
                     Utilities.addExceptionToLog(ex);
                     continue;
                 }
@@ -114,11 +127,20 @@ public class ShortPay_Rebill {
                 catch(Exception ex)
                 {
                     Utilities.LogError(invoice.toString(), "Failed to send invoice to letterhub", ex, "ShortPay Rebills");
+                    invoicesFailedToSend.put(invoice.toString(), ex);
                     continue;
                 }
 
                 i++;
             }
+
+            //Send notification email in case any invoice failed to download/Merge/Add Note
+            if(invoicesFailedToDownload.size() > 0 || invoicesFailedToMerge.size() > 0 || invoicesFailedToAddNote.size() > 0 || claimsFailedToAddNote.size() > 0
+                                                   || invoicesFailedToSend.size() > 0)
+            {
+                Utilities.SendNotificationEmail(invoicesFailedToDownload,invoicesFailedToMerge,invoicesFailedToAddNote,claimsFailedToAddNote, invoicesFailedToSend);
+            }
+
             //Zip files
             Utilities.addToLog("Zipping Pdfs");
             Utilities.zipFolder(workingDirInvoice, completedDir + zipFile);
@@ -129,6 +151,8 @@ public class ShortPay_Rebill {
             //Move zip file to network folder
             Utilities.addToLog("Copying Zip file to network drive");
             Utilities.copyFolderNew(new File(completedDir + zipFile), new File(networkFolder + zipFile));
+
+
         }
         catch (Exception e)
         {
